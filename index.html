@@ -132,17 +132,35 @@
 // Fallback shim: window.storage only exists inside the Claude artifact runtime.
 // If this file is ever opened standalone, fall back to localStorage so it still works
 // (data then stays on that one device/browser instead of syncing everywhere).
-if (!window.storage) {
-  window.storage = {
-    async get(key) {
-      const v = localStorage.getItem('bonusportal_' + key);
-      if (v === null) throw new Error('not found');
-      return { key, value: v };
-    },
-    async set(key, value) {
-      localStorage.setItem('bonusportal_' + key, value);
-      return { key, value };
+// Server-backed storage
+window.storage = {
+  async get(key) {
+    const res = await fetch('/api/storage/' + encodeURIComponent(key));
+
+    if (!res.ok) {
+      throw new Error('not found');
     }
+
+    return await res.json();
+  },
+
+  async set(key, value) {
+    const res = await fetch('/api/storage/' + encodeURIComponent(key), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ value })
+    });
+
+    if (!res.ok) {
+      throw new Error('save failed');
+    }
+
+    return await res.json();
+  }
+  };
+}
   };
 }
 
