@@ -82,13 +82,25 @@ initDb()
     console.error(
       "Database connection failed (app will still run, but storage will fail until this is fixed). Details:",
       "message=", err.message,
-      "code=", err.code
+      "code=", err.code,
+      "cause=", err.cause ? (err.cause.message || err.cause.code || String(err.cause)) : "none"
     );
   });
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });
+
+// Diagnostic: test whether ANY outbound internet access works at runtime
+// (not just Neon), to figure out if this is a Neon-specific issue or a
+// platform-wide restriction on outbound connections.
+fetch("https://api.github.com")
+  .then((res) => {
+    console.log("OUTBOUND TEST: SUCCESS - reached api.github.com, status:", res.status);
+  })
+  .catch((err) => {
+    console.error("OUTBOUND TEST: FAILED - could not reach api.github.com. Error:", err.message, err.cause ? String(err.cause) : "");
+  });
 
 process.on("SIGTERM", () => {
   console.error("Process received SIGTERM (platform is killing/restarting the app).");
