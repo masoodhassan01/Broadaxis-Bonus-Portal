@@ -8,16 +8,16 @@ app.use(cors());
 const PORT = process.env.PORT || 3000;
 
 // ---------- Database setup ----------
-// DATABASE_URL comes from an environment variable you'll set in the
-// Abasthan dashboard after creating a Postgres database there.
-if (!process.env.DATABASE_URL) {
-  console.error(
-    "Missing DATABASE_URL environment variable. Set it in Abasthan > Environment before starting the app."
-  );
-}
+// Prefer an environment variable if it's set (best practice), but fall
+// back to this hardcoded connection string so deployment works even
+// without configuring Abasthan's Environment Variables UI.
+// NOTE: this repo is private, which is why hardcoding this is acceptable here.
+const DATABASE_URL =
+  process.env.DATABASE_URL ||
+  "postgresql://neondb_owner:npg_7cE8PWQedNGp@ep-jolly-shadow-a5663oq9-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require";
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: DATABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
 
