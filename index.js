@@ -19,6 +19,7 @@ const DATABASE_URL =
 const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: { rejectUnauthorized: false },
+  connectionTimeoutMillis: 4000,
 });
 
 // Create the storage table if it doesn't exist yet (runs once on boot).
@@ -87,9 +88,20 @@ initDb()
     console.log("Database connected and ready.");
   })
   .catch((err) => {
-    console.error("Database connection failed (app will still run, but storage will fail until this is fixed):", err.message);
+    console.error(
+      "Database connection failed (app will still run, but storage will fail until this is fixed). Details:",
+      "message=", err.message,
+      "code=", err.code,
+      "errno=", err.errno,
+      "syscall=", err.syscall
+    );
   });
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
+});
+
+process.on("SIGTERM", () => {
+  console.error("Process received SIGTERM (platform is killing/restarting the app).");
+  process.exit(0);
 });
