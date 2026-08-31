@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3000;
 // NOTE: this repo is private, which is why hardcoding this is acceptable here.
 const DATABASE_URL =
   process.env.DATABASE_URL ||
-  "postgresql://neondb_owner:npg_7cE8PWQedNGp@ep-jolly-shadow-a5663oq9-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require";
+  "postgresql://neondb_owner:npg_7cE8PWQedNGp@ep-jolly-shadow-a5663oq9-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require";
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
@@ -84,11 +84,12 @@ app.get("/", (req, res) => {
 
 initDb()
   .then(() => {
-    app.listen(PORT, () => {
-      console.log(`Server running at http://localhost:${PORT}`);
-    });
+    console.log("Database connected and ready.");
   })
   .catch((err) => {
-    console.error("Failed to initialize database:", err);
-    process.exit(1);
+    console.error("Database connection failed (app will still run, but storage will fail until this is fixed):", err.message);
   });
+
+app.listen(PORT, () => {
+  console.log(`Server running at http://localhost:${PORT}`);
+});
