@@ -1,35 +1,30 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const { Pool } = require("pg");
+const { neon } = require("@neondatabase/serverless");
 
 const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000;
 
 // ---------- Database setup ----------
-// Prefer an environment variable if it's set (best practice), but fall
-// back to this hardcoded connection string so deployment works even
-// without configuring Abasthan's Environment Variables UI.
-// NOTE: this repo is private, which is why hardcoding this is acceptable here.
+// Using Neon's HTTP driver instead of a raw TCP (port 5432) connection.
+// This talks to the database over HTTPS (port 443), which works even on
+// networks/platforms that block or restrict raw database ports.
 const DATABASE_URL =
   process.env.DATABASE_URL ||
   "postgresql://neondb_owner:npg_7cE8PWQedNGp@ep-jolly-shadow-a5663oq9-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require";
 
-const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-  connectionTimeoutMillis: 4000,
-});
+const sql = neon(DATABASE_URL);
 
 // Create the storage table if it doesn't exist yet (runs once on boot).
 async function initDb() {
-  await pool.query(`
+  await sql`
     CREATE TABLE IF NOT EXISTS storage (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
-  `);
+  `;
 }
 
 app.use(express.json());
@@ -40,18 +35,15 @@ app.get("/api/storage/:key", async (req, res) => {
   const key = req.params.key;
 
   try {
-    const result = await pool.query(
-      "SELECT value FROM storage WHERE key = $1",
-      [key]
-    );
+    const rows = await sql`SELECT value FROM storage WHERE key = ${key}`;
 
-    if (result.rows.length === 0) {
+    if (rows.length === 0) {
       return res.status(404).json({ error: "Not found" });
     }
 
-    res.json({ key, value: result.rows[0].value });
+    res.json({ key, value: rows[0].value });
   } catch (error) {
-    console.error("DB read error:", error);
+    console.error("DB read error:", error.message);
     res.status(500).json({ error: "Server error" });
   }
 });
@@ -65,15 +57,14 @@ app.post("/api/storage/:key", async (req, res) => {
   }
 
   try {
-    await pool.query(
-      `INSERT INTO storage (key, value) VALUES ($1, $2)
-       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-      [key, req.body.value]
-    );
+    await sql`
+      INSERT INTO storage (key, value) VALUES (${key}, ${req.body.value})
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+    `;
 
     res.json({ key, value: req.body.value });
   } catch (error) {
-    console.error("DB write error:", error);
+    console.error("DB write error:", error.message);
     res.status(500).json({ error: "Server error" });
   }
 });
@@ -91,9 +82,7 @@ initDb()
     console.error(
       "Database connection failed (app will still run, but storage will fail until this is fixed). Details:",
       "message=", err.message,
-      "code=", err.code,
-      "errno=", err.errno,
-      "syscall=", err.syscall
+      "code=", err.code
     );
   });
 
