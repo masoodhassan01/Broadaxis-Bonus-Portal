@@ -17,14 +17,35 @@ const DATABASE_URL =
 
 const sql = neon(DATABASE_URL);
 
+// Neon's free-tier compute auto-suspends after a period of inactivity and
+// needs a few seconds to wake back up. The first query after a suspend can
+// fail with "fetch failed" while it's waking. Retry a few times with
+// increasing delay before giving up, so a sleeping database doesn't turn
+// into a hard error for the person using the app.
+async function queryWithRetry(fn, label) {
+  const delaysMs = [500, 1500, 3000, 5000];
+  for (let i = 0; i < delaysMs.length; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      console.error(`${label} attempt ${i + 1} failed:`, error.message);
+      await new Promise((r) => setTimeout(r, delaysMs[i]));
+    }
+  }
+  return await fn(); // final attempt: let it throw for the route's catch block
+}
+
 // Create the storage table if it doesn't exist yet (runs once on boot).
 async function initDb() {
-  await sql`
-    CREATE TABLE IF NOT EXISTS storage (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    );
-  `;
+  await queryWithRetry(
+    () => sql`
+      CREATE TABLE IF NOT EXISTS storage (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `,
+    "initDb"
+  );
 }
 
 app.use(express.json());
@@ -35,7 +56,10 @@ app.get("/api/storage/:key", async (req, res) => {
   const key = req.params.key;
 
   try {
-    const rows = await sql`SELECT value FROM storage WHERE key = ${key}`;
+    const rows = await queryWithRetry(
+      () => sql`SELECT value FROM storage WHERE key = ${key}`,
+      "DB read"
+    );
 
     if (rows.length === 0) {
       return res.status(404).json({ error: "Not found" });
@@ -57,10 +81,13 @@ app.post("/api/storage/:key", async (req, res) => {
   }
 
   try {
-    await sql`
-      INSERT INTO storage (key, value) VALUES (${key}, ${req.body.value})
-      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
-    `;
+    await queryWithRetry(
+      () => sql`
+        INSERT INTO storage (key, value) VALUES (${key}, ${req.body.value})
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+      `,
+      "DB write"
+    );
 
     res.json({ key, value: req.body.value });
   } catch (error) {
