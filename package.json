@@ -16,6 +16,6 @@
   "dependencies": {
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "@neondatabase/serverless": "^0.10.4"
+    "firebase-admin": "^14.3.0"
   }
 }
