@@ -173,18 +173,15 @@ window.storage = {
     return await res.json();
   }
   };
-// Passwords are never stored or displayed in plain text - only their SHA-256
-// hash is kept. This is a client-side-only app (no backend), so this can't
-// stop someone with real access to the browser's dev tools from intercepting
-// what's typed - but it does stop passwords from sitting in plain text in
-// storage or being shown on screen, which is what this file used to do.
+// Passwords are stored as plain text (not hashed). This app is used by a
+// small, trusted internal team, so the extra complexity of hashing wasn't
+// worth it here. hashPassword() is kept as a passthrough so the rest of the
+// code (which calls it consistently everywhere) doesn't need to change.
 async function hashPassword(pw) {
-  const enc = new TextEncoder().encode(pw);
-  const buf = await crypto.subtle.digest('SHA-256', enc);
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return pw;
 }
 function looksHashed(v) {
-  return typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
+  return true; // no migration needed - nothing is hashed
 }
 
 const app = document.getElementById('app');
