@@ -293,19 +293,22 @@ function round2(n) {
 }
 
 async function loadAll() {
-  // Try each key once, then once more after a short pause — covers the
-  // brief window right after the server wakes up from sleep where the DB
-  // connection isn't ready yet. If it still fails after the retry, this is
+  // Try each key with several attempts and increasing waits — covers a
+  // brief window right after the server wakes up from sleep, or any
+  // momentary network hiccup. If it still fails after all attempts, this is
   // a real problem (not "key doesn't exist"), so we stop and show an error
   // instead of falling through to seedCandidates()/defaults, which would
   // silently overwrite real saved data.
   async function getWithRetry(key) {
-    try {
-      return await window.storage.get(key, true);
-    } catch (e) {
-      await new Promise(r => setTimeout(r, 1500));
-      return await window.storage.get(key, true); // let a second failure throw
+    const delaysMs = [1500, 3000, 5000, 7000]; // ~16s of patience total
+    for (let i = 0; i < delaysMs.length; i++) {
+      try {
+        return await window.storage.get(key, true);
+      } catch (e) {
+        await new Promise(r => setTimeout(r, delaysMs[i]));
+      }
     }
+    return await window.storage.get(key, true); // final attempt: let it throw
   }
 
   let r, c, s;
