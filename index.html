@@ -134,11 +134,24 @@
 // (data then stays on that one device/browser instead of syncing everywhere).
 // Server-backed storage
 window.storage = {
+  // Returns null ONLY when the server confirms the key genuinely doesn't
+  // exist (HTTP 404). Any other failure (500, network error, cold-start
+  // hiccup) throws instead, so callers can tell "no data yet" apart from
+  // "couldn't reach the server right now" and avoid silently overwriting
+  // real data with fresh defaults.
   async get(key) {
-    const res = await fetch('/api/storage/' + encodeURIComponent(key));
+    let res;
+    try {
+      res = await fetch('/api/storage/' + encodeURIComponent(key));
+    } catch (networkErr) {
+      throw new Error('network error: ' + networkErr.message);
+    }
 
+    if (res.status === 404) {
+      return null;
+    }
     if (!res.ok) {
-      throw new Error('not found');
+      throw new Error('server error: ' + res.status);
     }
 
     return await res.json();
@@ -280,18 +293,38 @@ function round2(n) {
 }
 
 async function loadAll() {
+  // Try each key once, then once more after a short pause — covers the
+  // brief window right after the server wakes up from sleep where the DB
+  // connection isn't ready yet. If it still fails after the retry, this is
+  // a real problem (not "key doesn't exist"), so we stop and show an error
+  // instead of falling through to seedCandidates()/defaults, which would
+  // silently overwrite real saved data.
+  async function getWithRetry(key) {
+    try {
+      return await window.storage.get(key, true);
+    } catch (e) {
+      await new Promise(r => setTimeout(r, 1500));
+      return await window.storage.get(key, true); // let a second failure throw
+    }
+  }
+
+  let r, c, s;
   try {
-    const r = await window.storage.get('recruiters_v2', true);
-    state.recruiters = r ? JSON.parse(r.value) : null;
-  } catch(e) { state.recruiters = null; }
-  try {
-    const c = await window.storage.get('candidates_v2', true);
-    state.candidates = c ? JSON.parse(c.value) : null;
-  } catch(e) { state.candidates = null; }
-  try {
-    const s = await window.storage.get('settings_v2', true);
-    state.settings = s ? JSON.parse(s.value) : null;
-  } catch(e) { state.settings = null; }
+    r = await getWithRetry('recruiters_v2');
+    c = await getWithRetry('candidates_v2');
+    s = await getWithRetry('settings_v2');
+  } catch (e) {
+    app.innerHTML =
+      '<div class="card"><h1>Couldn\'t load data</h1>' +
+      '<div class="sub">The server or database isn\'t responding right now. ' +
+      'Refresh in a moment — your saved data is safe and will load once the connection is back.</div>' +
+      '<button class="btn" onclick="location.reload()">Retry</button></div>';
+    throw e; // stop here — do NOT fall through to the seeding logic below
+  }
+
+  state.recruiters = r ? JSON.parse(r.value) : null;
+  state.candidates = c ? JSON.parse(c.value) : null;
+  state.settings = s ? JSON.parse(s.value) : null;
 
   if (!state.recruiters) {
     state.recruiters = {
